@@ -1,0 +1,465 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from matplotlib.widgets import Slider, Button
+import pickle
+
+# --- Load everything ---
+with open('q_table_N16_p0100.pkl', 'rb') as f:
+    Q = pickle.load(f)
+print(f"Q-table loaded | {len(Q)} unique states")
+
+test_mazes = np.load('./data/maze_dataset/N16_p0100_test.npy')
+print(f"Loaded {test_mazes.shape[0]} test mazes")
+
+with open('vi_test_N16_p0100.pkl', 'rb') as f:
+    vi_results = pickle.load(f)
+print(f"VI results loaded for {len(vi_results)} mazes")
+
+# --- Parameters ---
+GRID_SIZE = 16
+N_ACTIONS = 4
+START     = (0, 0)
+GOAL      = (GRID_SIZE-1, GRID_SIZE-1)
+
+action_to_delta = {0: (-1,0), 1: (1,0), 2: (0,-1), 3: (0,1)}
+action_to_arrow = {0: (0,-1), 1: (0,1), 2: (-1,0), 3: (1,0)}
+
+COLOR_AGENT   = '#E74C3C'
+COLOR_GOAL    = '#2ECC71'
+COLOR_START   = '#3498DB'
+COLOR_VISITED = '#F39C12'
+BG            = '#1A1A2E'
+
+# ----------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------
+
+def get_state(maze, pos):
+    row, col = pos
+    window = []
+    for dr in [-1, 0, 1]:
+        for dc in [-1, 0, 1]:
+            r, c = row+dr, col+dc
+            if 0 <= r < GRID_SIZE and 0 <= c < GRID_SIZE:
+                window.append(maze[r, c])
+            else:
+                window.append(1)
+    return tuple(window) + (int(np.sign(GOAL[0]-row)), int(np.sign(GOAL[1]-col)))
+
+def step(maze, pos, action):
+    row, col = pos
+    dr, dc   = action_to_delta[action]
+    nr, nc   = row+dr, col+dc
+    if nr < 0 or nr >= GRID_SIZE or nc < 0 or nc >= GRID_SIZE:
+        return pos, -1.0, False
+    if maze[nr, nc] == 1:
+        return pos, -1.0, False
+    if (nr, nc) == GOAL:
+        return (nr, nc), +100.0, True
+    return (nr, nc), -0.1, False
+
+def get_path(maze, Q):
+    pos, path = START, [START]
+    for _ in range(GRID_SIZE * GRID_SIZE * 2):
+        q_vals = Q.get(get_state(maze, pos), np.zeros(N_ACTIONS))
+        action = np.argmax(q_vals)
+        pos, _, done = step(maze, pos, action)
+        path.append(pos)
+        if done:
+            return path, True
+    return path, False
+
+def get_ql_value_policy(maze, Q):
+    V      = np.full((GRID_SIZE, GRID_SIZE), np.nan)
+    policy = np.full((GRID_SIZE, GRID_SIZE), -1, dtype=int)
+    for r in range(GRID_SIZE):
+        for c in range(GRID_SIZE):
+            if maze[r, c] == 1:
+                continue
+            q_vals       = Q.get(get_state(maze, (r,c)), np.zeros(N_ACTIONS))
+            V[r, c]      = np.max(q_vals)
+            policy[r, c] = np.argmax(q_vals)
+    return V, policy
+
+def get_agent_view(maze, pos):
+    row, col = pos
+    view = np.ones((3, 3))
+    for i, dr in enumerate([-1, 0, 1]):
+        for j, dc in enumerate([-1, 0, 1]):
+            r, c = row+dr, col+dc
+            if 0 <= r < GRID_SIZE and 0 <= c < GRID_SIZE:
+                view[i, j] = maze[r, c]
+    return view
+
+# --- Success rate ---
+successes = sum(1 for maze in test_mazes if get_path(maze, Q)[1])
+print(f"Success rate: {successes}/{len(test_mazes)} = {successes/len(test_mazes)*100:.1f}%")
+
+# ----------------------------------------------------------------
+# Maze image cache — build RGB array once per maze
+# ----------------------------------------------------------------
+
+_maze_img_cache = {}
+
+def get_maze_base_img(maze):
+    key = id(maze)
+    if key not in _maze_img_cache:
+        img = np.zeros((GRID_SIZE, GRID_SIZE, 3), dtype=np.float32)
+        for r in range(GRID_SIZE):
+            for c in range(GRID_SIZE):
+                if maze[r, c] == 1:
+                    img[r, c] = [0.17, 0.24, 0.31]   # obstacle
+                else:
+                    img[r, c] = [0.93, 0.94, 0.95]   # free
+        img[START[0], START[1]] = [0.20, 0.60, 0.86]  # start
+        img[GOAL[0],  GOAL[1]]  = [0.18, 0.80, 0.44]  # goal
+        _maze_img_cache[key] = img
+    return _maze_img_cache[key].copy()
+
+# ----------------------------------------------------------------
+# Draw functions
+# ----------------------------------------------------------------
+
+# persistent handles for agent panel
+_agent_im_handle = [None]
+_agent_circle    = [None]
+_agent_ax_ready  = [False]
+
+def reset_agent_panel():
+    _agent_ax_ready[0] = False
+
+def draw_agent_panel(ax, maze, path, step_idx):
+
+    pos = path[min(step_idx, len(path)-1)]
+
+    if not _agent_ax_ready[0]:
+
+        ax.clear()
+        ax.set_facecolor(BG)
+        ax.axis('off')
+
+        ax.set_xlim(-0.5, GRID_SIZE-0.5)
+        ax.set_ylim(GRID_SIZE-0.5, -0.5)
+
+        # force square cells
+        ax.set_aspect('equal', adjustable='box')
+
+        # ---- base maze image (FAST) ----
+        img = get_maze_base_img(maze)
+
+        _agent_im_handle[0] = ax.imshow(
+            img,
+            extent=[-0.5, GRID_SIZE-0.5, GRID_SIZE-0.5, -0.5],
+            interpolation='nearest',
+            zorder=0,
+            aspect='equal'
+        )
+
+        # ---- draw grid ONCE ----
+        for i in range(GRID_SIZE + 1):
+            ax.axhline(i - 0.5, color='#BDC3C7', linewidth=0.35, zorder=1)
+            ax.axvline(i - 0.5, color='#BDC3C7', linewidth=0.35, zorder=1)
+
+        # start + goal labels
+        ax.text(START[1], START[0], 'S',
+                ha='center', va='center',
+                color='white', fontsize=9, fontweight='bold', zorder=4)
+
+        ax.text(GOAL[1], GOAL[0], 'G',
+                ha='center', va='center',
+                color='white', fontsize=9, fontweight='bold', zorder=4)
+
+        ax.set_title('Agent Navigation', color='white', fontsize=11, pad=6)
+
+        # agent marker
+        circle = plt.Circle((pos[1], pos[0]), 0.35, color=COLOR_AGENT, zorder=5)
+        ax.add_patch(circle)
+
+        _agent_circle[0]   = circle
+        _agent_ax_ready[0] = True
+
+
+    else:
+        # ---- update image with trail ----
+        img = get_maze_base_img(maze)
+
+        for i in range(min(step_idx, len(path))):
+            r, c = path[i]
+            if (r,c) != START and (r,c) != GOAL:
+                img[r, c] = [0.95, 0.61, 0.07]   # visited
+
+        _agent_im_handle[0].set_data(img)
+
+        # move agent
+        _agent_circle[0].center = (pos[1], pos[0])
+
+
+def draw_view_panel(ax, maze, path, step_idx):
+    ax.clear()
+    ax.set_facecolor(BG)
+    pos  = path[min(step_idx, len(path)-1)]
+    view = get_agent_view(maze, pos)
+
+    for i in range(3):
+        for j in range(3):
+            if i == 1 and j == 1:
+                color = COLOR_AGENT
+            elif view[i, j] == 1:
+                color = '#2C3E50'
+            else:
+                color = '#ECF0F1'
+            ax.add_patch(patches.Rectangle(
+                (j-0.5, i-0.5), 1, 1,
+                linewidth=1.5, edgecolor='#7F8C8D', facecolor=color
+            ))
+
+    dr_goal = int(np.sign(GOAL[0]-pos[0]))
+    dc_goal = int(np.sign(GOAL[1]-pos[1]))
+    ax.annotate('', xy=(1+dc_goal*0.7, 1+dr_goal*0.7), xytext=(1,1),
+                arrowprops=dict(arrowstyle='->', color='#F1C40F', lw=2.5))
+
+    ax.set_xlim(-0.5, 2.5)
+    ax.set_ylim(2.5, -0.5)
+    ax.set_aspect('equal')
+    ax.axis('off')
+    ax.set_title("Agent's 3x3 View", color='white', fontsize=11, pad=6)
+
+
+def draw_value_panel(ax, im_container, V, maze, title):
+    V_display = np.where(
+        np.array([[maze[r,c] for c in range(GRID_SIZE)]
+                  for r in range(GRID_SIZE)]) == 1,
+        np.nan, V
+    )
+    if im_container[0] is None:
+        ax.set_facecolor(BG)
+        im = ax.imshow(V_display, cmap='RdYlGn',
+                       interpolation='nearest', aspect='equal')
+        im_container[0] = im
+        cb = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cb.ax.tick_params(colors='white', labelsize=7)
+        ax.tick_params(colors='white', labelsize=7)
+    else:
+        im_container[0].set_data(V_display)
+        vmin = np.nanmin(V_display)
+        vmax = np.nanmax(V_display)
+        im_container[0].set_clim(vmin=vmin, vmax=vmax)
+        for p in ax.patches:
+            p.remove()
+
+    for r in range(GRID_SIZE):
+        for c in range(GRID_SIZE):
+            if maze[r, c] == 1:
+                ax.add_patch(patches.Rectangle(
+                    (c-0.5, r-0.5), 1, 1,
+                    facecolor='#2C3E50', linewidth=0, zorder=2
+                ))
+    ax.set_title(title, color='white', fontsize=11, pad=6)
+
+
+def draw_policy_panel(ax, policy, maze, title):
+    ax.clear()
+    ax.set_facecolor(BG)
+    ax.set_xlim(-0.5, GRID_SIZE-0.5)
+    ax.set_ylim(GRID_SIZE-0.5, -0.5)
+    ax.set_aspect('equal')
+
+    for r in range(GRID_SIZE):
+        for c in range(GRID_SIZE):
+            ax.add_patch(patches.Rectangle(
+                (c-0.5, r-0.5), 1, 1, linewidth=0.3,
+                edgecolor='#4A4A6A',
+                facecolor='#2C3E50' if maze[r,c]==1 else '#2E4057'
+            ))
+
+    for r in range(GRID_SIZE):
+        for c in range(GRID_SIZE):
+            if maze[r,c]==1 or (r,c)==GOAL or policy[r,c]==-1:
+                continue
+            du, dv = action_to_arrow[policy[r,c]]
+            ax.quiver(c, r, du, dv, angles='xy', scale_units='xy', scale=2.5,
+                      color='#F1C40F', width=0.004, headwidth=4)
+
+    for pos_mark, col_mark, lbl in [(GOAL, COLOR_GOAL, 'G'), (START, COLOR_START, 'S')]:
+        ax.add_patch(patches.Rectangle(
+            (pos_mark[1]-0.5, pos_mark[0]-0.5), 1, 1,
+            facecolor=col_mark, linewidth=0
+        ))
+        ax.text(pos_mark[1], pos_mark[0], lbl, ha='center', va='center',
+                color='white', fontsize=9, fontweight='bold')
+
+    ax.set_title(title, color='white', fontsize=11, pad=6)
+    ax.tick_params(colors='white', labelsize=7)
+
+# ----------------------------------------------------------------
+# Layout — equal 2x3 grid
+# ----------------------------------------------------------------
+
+fig = plt.figure(figsize=(14, 8))
+fig.patch.set_facecolor(BG)
+
+LEFT_MARGIN  = 0.04
+RIGHT_MARGIN = 0.97
+TOP_MARGIN   = 0.93
+BOT_MARGIN   = 0.10
+H_GAP        = 0.05
+V_GAP        = 0.06
+
+total_w = RIGHT_MARGIN - LEFT_MARGIN
+total_h = TOP_MARGIN   - BOT_MARGIN
+cell_w  = (total_w - 2 * H_GAP) / 3
+cell_h  = (total_h - 1 * V_GAP) / 2
+
+col0 = LEFT_MARGIN
+col1 = LEFT_MARGIN +     cell_w + H_GAP
+col2 = LEFT_MARGIN + 2 * (cell_w + H_GAP)
+row0 = BOT_MARGIN  + cell_h + V_GAP   # top row
+row1 = BOT_MARGIN                      # bottom row
+
+ax_agent  = fig.add_axes([col0, row0-0.02, cell_w*1.05, cell_h*1.05])
+ax_vi_val = fig.add_axes([col1, row0, cell_w, cell_h])
+ax_ql_val = fig.add_axes([col2, row0, cell_w, cell_h])
+ax_view   = fig.add_axes([col0+ 0.05, row1+0.05, cell_w*0.70, cell_h*0.70])
+ax_vi_pol = fig.add_axes([col1+ 0.015, row1, cell_w, cell_h])
+ax_ql_pol = fig.add_axes([col2+ 0.015, row1, cell_w, cell_h])
+
+for ax in [ax_agent, ax_view, ax_vi_val, ax_vi_pol, ax_ql_val, ax_ql_pol]:
+    ax.set_facecolor(BG)
+
+im_vi = [None]
+im_ql = [None]
+
+# ----------------------------------------------------------------
+# Controls
+# ----------------------------------------------------------------
+
+
+ax_slider = fig.add_axes([0.32, 0.03, 0.55, 0.02])
+ax_slider.set_facecolor('#2C3E50')
+slider = Slider(ax_slider, 'Maze', 0, len(test_mazes)-1,
+                valinit=0, valstep=1, color='#E74C3C')
+slider.label.set_color('white')
+slider.valtext.set_color('white')
+
+ax_btn_back = fig.add_axes([0.125, 0.085, 0.03, 0.03])
+ax_btn_play = fig.add_axes([0.165, 0.085, 0.03, 0.03])
+ax_btn_fwd  = fig.add_axes([0.205, 0.085, 0.03, 0.03])
+
+btn_back = Button(ax_btn_back, '◀◀', color='#2C3E50', hovercolor='#3D566E')
+btn_play = Button(ax_btn_play, '▶',  color='#2C3E50', hovercolor='#3D566E')
+btn_fwd  = Button(ax_btn_fwd,  '▶▶', color='#2C3E50', hovercolor='#3D566E')
+
+for btn in [btn_back, btn_play, btn_fwd]:
+    btn.label.set_color('white')
+    btn.label.set_fontsize(10)
+
+# ----------------------------------------------------------------
+# Frame state
+# ----------------------------------------------------------------
+
+state = {
+    'frame':    0,
+    'playing':  False,
+    'path':     [],
+    'maze':     None,
+    'success':  False,
+    'maze_idx': 0,
+}
+
+last_rendered = [-1]
+
+def render_frame(i):
+    if not state['path']:
+        return
+    if i == last_rendered[0]:
+        return
+    last_rendered[0] = i
+    draw_agent_panel(ax_agent, state['maze'], state['path'], i)
+    draw_view_panel(ax_view,   state['maze'], state['path'], i)
+    status      = 'SUCCESS ✓' if state['success'] else 'FAILED ✗'
+    title_color = '#2ECC71'   if state['success'] else '#E74C3C'
+    fig.suptitle(
+        f"Maze {state['maze_idx']}  |  Step {i}/{len(state['path'])-1}  |  {status}",
+        color=title_color, fontsize=13, y=0.99
+    )
+    fig.canvas.draw_idle()
+
+timer = fig.canvas.new_timer(interval=200)
+
+def timer_tick(*args):
+    if state['playing']:
+        if state['frame'] < len(state['path']) - 1:
+            state['frame'] += 1
+            render_frame(state['frame'])
+        else:
+            state['playing'] = False
+            btn_play.label.set_text('▶')
+            fig.canvas.draw_idle()
+
+timer.add_callback(timer_tick)
+timer.start()
+
+def on_play(event):
+    if state['playing']:
+        state['playing'] = False
+        btn_play.label.set_text('▶')
+    else:
+        state['playing'] = True
+        btn_play.label.set_text('⏸')
+    fig.canvas.draw_idle()
+
+def on_back(event):
+    state['playing'] = False
+    btn_play.label.set_text('▶')
+    state['frame'] = max(0, state['frame'] - 1)
+    last_rendered[0] = -1
+    render_frame(state['frame'])
+
+def on_fwd(event):
+    state['playing'] = False
+    btn_play.label.set_text('▶')
+    state['frame'] = min(len(state['path'])-1, state['frame'] + 1)
+    last_rendered[0] = -1
+    render_frame(state['frame'])
+
+btn_play.on_clicked(on_play)
+btn_back.on_clicked(on_back)
+btn_fwd.on_clicked(on_fwd)
+
+# ----------------------------------------------------------------
+# Main run_maze
+# ----------------------------------------------------------------
+
+def run_maze(idx):
+    idx   = int(idx)
+    maze  = test_mazes[idx]
+    path, success = get_path(maze, Q)
+
+    V_vi,  pol_vi = vi_results[idx]['V'], vi_results[idx]['policy']
+    V_ql,  pol_ql = get_ql_value_policy(maze, Q)
+
+    state['frame']    = 0
+    state['path']     = path
+    state['maze']     = maze
+    state['success']  = success
+    state['maze_idx'] = idx
+    state['playing']  = True
+    last_rendered[0]  = -1
+    btn_play.label.set_text('⏸')
+
+    status = 'SUCCESS ✓' if success else 'FAILED ✗'
+    print(f"Maze {idx} | {status} | {len(path)} steps")
+
+    reset_agent_panel()
+
+    draw_value_panel(ax_vi_val, im_vi, V_vi, maze, 'Value Function  (VI — Optimal)')
+    draw_value_panel(ax_ql_val, im_ql, V_ql, maze, 'Value Function  (QL — Learned)')
+    draw_policy_panel(ax_vi_pol, pol_vi, maze, 'Optimal Policy (VI)')
+    draw_policy_panel(ax_ql_pol, pol_ql, maze, 'Learned Policy (QL)')
+
+    render_frame(0)
+
+slider.on_changed(run_maze)
+run_maze(0)
+plt.show()
