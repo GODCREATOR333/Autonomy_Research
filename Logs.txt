@@ -1,3 +1,0 @@
-Reward -0.1 step, -1 collision/Wall , +100 for goal : 7% Sucess Rate
-Reward -1 step, -50 collision/Wall , +500 for gaol : 27% Sucess Rate
-Reward -1 step, -5 collision/wall , +100 for goal : 0% Sucess Rate

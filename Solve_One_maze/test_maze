@@ -3,16 +3,24 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.widgets import Slider, Button
 import pickle
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Add this to the top of BOTH train_maze.py and test_maze.py
+import os
+print(f"Working directory: {os.getcwd()}")
+print(f"Absolute path to pickle: {os.path.abspath('q_table_N16_p0100.pkl')}")
 
 # --- Load everything ---
-with open('q_table_N16_p0100.pkl', 'rb') as f:
+with open(os.path.join(BASE_DIR, 'q_table_N16_p0100.pkl'), 'rb') as f:
     Q = pickle.load(f)
 print(f"Q-table loaded | {len(Q)} unique states")
 
-test_mazes = np.load('./data/maze_dataset/N16_p0100_test.npy')
+test_mazes = np.load('./data/maze_dataset/N16_p0100_train.npy')
 print(f"Loaded {test_mazes.shape[0]} test mazes")
 
-with open('vi_test_N16_p0100.pkl', 'rb') as f:
+with open(os.path.join(BASE_DIR, 'vi_train_N16_p0100.pkl'), 'rb') as f:
     vi_results = pickle.load(f)
 print(f"VI results loaded for {len(vi_results)} mazes")
 
@@ -21,7 +29,7 @@ GRID_SIZE = 16
 N_ACTIONS = 4
 START     = (0, 0)
 GOAL      = (GRID_SIZE-1, GRID_SIZE-1)
-WINDOW_SIZE = 5
+WINDOW_SIZE = 3
 HALF_W = WINDOW_SIZE // 2
 
 
@@ -57,6 +65,7 @@ def get_state(maze, pos):
 
     return tuple(window) + (dr_goal, dc_goal)
 
+
 def step(maze, pos, action):
     row, col = pos
     dr, dc   = action_to_delta[action]
@@ -69,28 +78,65 @@ def step(maze, pos, action):
         return (nr, nc), +100.0, True
     return (nr, nc), -0.1, False
 
-def get_path(maze, Q):
-    pos, path = START, [START]
-    for _ in range(GRID_SIZE * GRID_SIZE * 2):
-        q_vals = Q.get(get_state(maze, pos), np.zeros(N_ACTIONS))
-        action = np.argmax(q_vals)
-        pos, _, done = step(maze, pos, action)
-        path.append(pos)
-        if done:
-            return path, True
-    return path, False
-
+# def get_path(maze, Q):
+#     pos, path = START, [START]
+#     for _ in range(GRID_SIZE * GRID_SIZE * 2):
+#         q_vals = Q.get(get_state(maze, pos), np.zeros(N_ACTIONS))
+#         action = np.argmax(q_vals)
+#         pos, _, done = step(maze, pos, action)
+#         path.append(pos)
+#         if done:
+#             return path, True
+#     return path, False
 def get_ql_value_policy(maze, Q):
-    V      = np.full((GRID_SIZE, GRID_SIZE), np.nan)
-    policy = np.full((GRID_SIZE, GRID_SIZE), -1, dtype=int)
+
+    V = np.full((GRID_SIZE, GRID_SIZE), np.nan)
+    policy = np.full((GRID_SIZE, GRID_SIZE), -1)
+
     for r in range(GRID_SIZE):
         for c in range(GRID_SIZE):
+
             if maze[r, c] == 1:
                 continue
-            q_vals       = Q.get(get_state(maze, (r,c)), np.zeros(N_ACTIONS))
-            V[r, c]      = np.max(q_vals)
-            policy[r, c] = np.argmax(q_vals)
+
+            pos = (r, c)
+            state = get_state(maze, pos)
+
+            if state in Q:
+                q_vals = Q[state]
+                V[r, c] = np.max(q_vals)
+                policy[r, c] = np.argmax(q_vals)
+
     return V, policy
+
+def get_path(maze, Q):
+    pos  = START
+    path = [START]
+
+    for _ in range(GRID_SIZE * GRID_SIZE * 2):
+
+        state = get_state(maze, pos)
+
+        # --- ADD THIS PRINT ---
+        if state in Q:
+            action = np.argmax(Q[state])
+        else:
+            # fallback: move toward goal
+            dr = GOAL[0] - pos[0]
+            dc = GOAL[1] - pos[1]
+
+            if abs(dr) >= abs(dc):
+                action = 1 if dr > 0 else 0
+            else:
+                action = 3 if dc > 0 else 2
+
+        pos, _, done = step(maze, pos, action)
+        path.append(pos)
+
+        if done:
+            return path, True
+
+    return path, False
 
 def get_agent_view(maze, pos):
     row, col = pos
@@ -443,7 +489,8 @@ btn_fwd.on_clicked(on_fwd)
 # ----------------------------------------------------------------
 
 def run_maze(idx):
-    idx   = int(idx)
+    # idx   = int(idx)
+    idx = 10
     maze  = test_mazes[idx]
     path, success = get_path(maze, Q)
 

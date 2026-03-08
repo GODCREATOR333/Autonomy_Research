@@ -1,0 +1,67 @@
+Reward -0.1 step, -1 collision/Wall , +100 for goal : 7% Sucess Rate
+Reward -1 step, -50 collision/Wall , +500 for gaol : 27% Sucess Rate
+Reward -1 step, -5 collision/wall , +100 for goal : 0% Sucess Rate
+N_episodes : 200,000 , Rewards = -1 for collision/wall , 0 for goal and -0.1 step ,more steps per episode. More exploration episilon = 0.99999 : 0% sucess. for every repeat step -2
+
+
+
+N_episodes : 50,000 , Rewards = -10 for collision/wall , +100 for goal and -0.1 step ,more steps per episode(max_steps = GRID_SIZE * GRID_SIZE * 8). More exploration episilon = 0.9999 : 0% sucess. for every repeat step -2
+Loaded 1000 mazes of size 16x16
+Q-table saved | Total states: 0
+Training Started
+Episode 1000/50000 | Avg Reward: 413.68 | Q-table size: 264 | Epsilon: 0.905
+Episode 2000/50000 | Avg Reward: 284.87 | Q-table size: 270 | Epsilon: 0.819
+Episode 3000/50000 | Avg Reward: -44.58 | Q-table size: 271 | Epsilon: 0.741
+Episode 4000/50000 | Avg Reward: -79.64 | Q-table size: 271 | Epsilon: 0.670
+Episode 5000/50000 | Avg Reward: 53.58 | Q-table size: 271 | Epsilon: 0.607
+Episode 6000/50000 | Avg Reward: 335.29 | Q-table size: 271 | Epsilon: 0.549
+Episode 7000/50000 | Avg Reward: 551.47 | Q-table size: 271 | Epsilon: 0.497
+Episode 8000/50000 | Avg Reward: 849.46 | Q-table size: 271 | Epsilon: 0.449
+Episode 9000/50000 | Avg Reward: 1094.74 | Q-table size: 271 | Epsilon: 0.407
+Episode 10000/50000 | Avg Reward: 1287.79 | Q-table size: 271 | Epsilon: 0.368
+Episode 11000/50000 | Avg Reward: 1553.92 | Q-table size: 271 | Epsilon: 0.333
+Episode 12000/50000 | Avg Reward: 1683.63 | Q-table size: 271 | Epsilon: 0.301
+Episode 13000/50000 | Avg Reward: 1961.95 | Q-table size: 271 | Epsilon: 0.273
+Episode 14000/50000 | Avg Reward: 2071.04 | Q-table size: 271 | Epsilon: 0.247
+Episode 15000/50000 | Avg Reward: 2227.52 | Q-table size: 271 | Epsilon: 0.223
+Episode 16000/50000 | Avg Reward: 2375.17 | Q-table size: 271 | Epsilon: 0.202
+Episode 17000/50000 | Avg Reward: 2500.54 | Q-table size: 271 | Epsilon: 0.183
+Episode 18000/50000 | Avg Reward: 2577.81 | Q-table size: 271 | Epsilon: 0.165
+Episode 19000/50000 | Avg Reward: 2708.33 | Q-table size: 271 | Epsilon: 0.150
+Episode 20000/50000 | Avg Reward: 2811.61 | Q-table size: 271 | Epsilon: 0.135
+Episode 21000/50000 | Avg Reward: 2862.46 | Q-table size: 271 | Epsilon: 0.122
+Episode 22000/50000 | Avg Reward: 2959.77 | Q-table size: 271 | Epsilon: 0.111
+Episode 23000/50000 | Avg Reward: 3029.73 | Q-table size: 271 | Epsilon: 0.100
+Episode 24000/50000 | Avg Reward: 3099.80 | Q-table size: 271 | Epsilon: 0.091
+Episode 25000/50000 | Avg Reward: 3175.61 | Q-table size: 271 | Epsilon: 0.082
+Episode 26000/50000 | Avg Reward: 3232.99 | Q-table size: 271 | Epsilon: 0.074
+Episode 27000/50000 | Avg Reward: 3286.37 | Q-table size: 271 | Epsilon: 0.067
+Episode 28000/50000 | Avg Reward: 3357.05 | Q-table size: 271 | Epsilon: 0.061
+Episode 29000/50000 | Avg Reward: 3394.88 | Q-table size: 271 | Epsilon: 0.055
+Episode 30000/50000 | Avg Reward: 3441.78 | Q-table size: 271 | Epsilon: 0.050
+Episode 31000/50000 | Avg Reward: 3456.36 | Q-table size: 271 | Epsilon: 0.050
+Episode 32000/50000 | Avg Reward: 3458.31 | Q-table size: 271 | Epsilon: 0.050
+Episode 33000/50000 | Avg Reward: 3472.49 | Q-table size: 271 | Epsilon: 0.050
+Episode 34000/50000 | Avg Reward: 3461.68 | Q-table size: 271 | Epsilon: 0.050
+Episode 35000/50000 | Avg Reward: 3460.76 | Q-table size: 271 | Epsilon: 0.050
+Episode 36000/50000 | Avg Reward: 3464.51 | Q-table size: 271 | Epsilon: 0.050
+Episode 37000/50000 | Avg Reward: 3462.46 | Q-table size: 271 | Epsilon: 0.050
+Episode 38000/50000 | Avg Reward: 3462.33 | Q-table size: 271 | Epsilon: 0.050
+Episode 39000/50000 | Avg Reward: 3469.82 | Q-table size: 271 | Epsilon: 0.050
+Episode 40000/50000 | Avg Reward: 3462.73 | Q-table size: 271 | Epsilon: 0.050
+Episode 41000/50000 | Avg Reward: 3466.78 | Q-table size: 271 | Epsilon: 0.050
+Episode 42000/50000 | Avg Reward: 3463.45 | Q-table size: 271 | Epsilon: 0.050
+Episode 43000/50000 | Avg Reward: 3453.63 | Q-table size: 271 | Epsilon: 0.050
+Episode 44000/50000 | Avg Reward: 3462.08 | Q-table size: 271 | Epsilon: 0.050
+Episode 45000/50000 | Avg Reward: 3455.01 | Q-table size: 271 | Epsilon: 0.050
+Episode 46000/50000 | Avg Reward: 3464.87 | Q-table size: 271 | Epsilon: 0.050
+Episode 47000/50000 | Avg Reward: 3458.72 | Q-table size: 271 | Epsilon: 0.050
+Episode 48000/50000 | Avg Reward: 3458.68 | Q-table size: 271 | Epsilon: 0.050
+Episode 49000/50000 | Avg Reward: 3459.32 | Q-table size: 271 | Epsilon: 0.050
+Episode 50000/50000 | Avg Reward: 3459.15 | Q-table size: 271 | Epsilon: 0.050
+Training Done! Q-Table Saved
+
+Tabular Q-learning is not generalizable
+→ motivates function approximation (DQN)
+→ which can learn features that transfer to unseen mazes
+→ which is the actual research contribution

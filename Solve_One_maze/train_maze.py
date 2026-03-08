@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import pickle
 
 # --- Load mazes ---
+
 mazes = np.load('./data/maze_dataset/N16_p0100_train.npy')
 print(f"Loaded {mazes.shape[0]} mazes of size {mazes.shape[1]}x{mazes.shape[2]}")
 
@@ -15,9 +16,8 @@ GRID_SIZE = 16
 N_ACTIONS = 4
 START = (0, 0)
 GOAL = (GRID_SIZE - 1, GRID_SIZE - 1)
-WINDOW_SIZE = 5   
+WINDOW_SIZE = 3   
 HALF_W = WINDOW_SIZE // 2
-
 
 # --- Action to movement mapping ---
 action_to_delta = {
@@ -39,7 +39,7 @@ def get_Q(Q, state):
     return Q[state]
 
 
-# --- Get local window state ---
+#--- Get local window state ---
 def get_state(maze, pos):
     row, col = pos
     window = []
@@ -69,15 +69,15 @@ def step(maze, pos, action):
     new_col = col + dc
 
     if new_row < 0 or new_row >= GRID_SIZE or new_col < 0 or new_col >= GRID_SIZE:
-        return pos, -5.0, False
+        return pos, -10.0, False
 
     if maze[new_row, new_col] == 1:
-        return pos, -5.0, False
+        return pos, -10.0, False
 
     if (new_row, new_col) == GOAL: 
         return (new_row, new_col), +100.0, True
 
-    return (new_row, new_col), -1, False
+    return (new_row, new_col), -0.1, False
 
 
 # --- Epsilon greedy ---
@@ -94,21 +94,23 @@ def select_action(Q, state, epsilon):
 # --- Q-learning loop ---
 def train(mazes, Q, n_episodes, alpha, gamma):
 
+    target_maze = mazes[10]
     rewards_per_episode = []
     print("Training Started")
 
     epsilon = 1.0
     epsilon_end = 0.05
-    epsilon_decay = 0.99995
+    epsilon_decay = 0.9999
 
     for episode in range(n_episodes):
 
-        maze = mazes[np.random.randint(len(mazes))]
+        # maze = mazes[np.random.randint(len(mazes))]
+        maze = target_maze
         pos = START
         state = get_state(maze, pos)
 
         total_reward = 0
-        max_steps = GRID_SIZE * GRID_SIZE * 4
+        max_steps = GRID_SIZE * GRID_SIZE * 8
 
         # visit count for this episode only
         visit_count = {}    
@@ -124,7 +126,7 @@ def train(mazes, Q, n_episodes, alpha, gamma):
             count = visit_count.get(new_pos, 0)
 
             if not done and count > 0:
-                reward -= 2
+                reward -= -2
 
             visit_count[new_pos] = count + 1
 
@@ -164,7 +166,7 @@ print(f"Q-table saved | Total states: {len(Q)}")
 Q, rewards = train(
     mazes,
     Q,
-    n_episodes=50000,
+    n_episodes=10000,
     alpha=0.1,
     gamma=0.99
 )
@@ -186,3 +188,4 @@ plt.show()
 # --- Save Q-table ---
 with open('q_table_N16_p0100.pkl', 'wb') as f:
     pickle.dump(Q, f)
+print("Training Done! Q-Table Saved")
