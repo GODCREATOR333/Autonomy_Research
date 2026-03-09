@@ -78,16 +78,17 @@ def step(maze, pos, action):
         return (nr, nc), +100.0, True
     return (nr, nc), -0.1, False
 
-# def get_path(maze, Q):
-#     pos, path = START, [START]
-#     for _ in range(GRID_SIZE * GRID_SIZE * 2):
-#         q_vals = Q.get(get_state(maze, pos), np.zeros(N_ACTIONS))
-#         action = np.argmax(q_vals)
-#         pos, _, done = step(maze, pos, action)
-#         path.append(pos)
-#         if done:
-#             return path, True
-#     return path, False
+def get_path(maze, Q):
+    pos, path = START, [START]
+    for _ in range(GRID_SIZE * GRID_SIZE * 2):
+        q_vals = Q.get(get_state(maze, pos), np.zeros(N_ACTIONS))
+        action = np.argmax(q_vals)
+        pos, _, done = step(maze, pos, action)
+        path.append(pos)
+        if done:
+            return path, True
+    return path, False
+
 def get_ql_value_policy(maze, Q):
 
     V = np.full((GRID_SIZE, GRID_SIZE), np.nan)
@@ -108,35 +109,6 @@ def get_ql_value_policy(maze, Q):
                 policy[r, c] = np.argmax(q_vals)
 
     return V, policy
-
-def get_path(maze, Q):
-    pos  = START
-    path = [START]
-
-    for _ in range(GRID_SIZE * GRID_SIZE * 2):
-
-        state = get_state(maze, pos)
-
-        # --- ADD THIS PRINT ---
-        if state in Q:
-            action = np.argmax(Q[state])
-        else:
-            # fallback: move toward goal
-            dr = GOAL[0] - pos[0]
-            dc = GOAL[1] - pos[1]
-
-            if abs(dr) >= abs(dc):
-                action = 1 if dr > 0 else 0
-            else:
-                action = 3 if dc > 0 else 2
-
-        pos, _, done = step(maze, pos, action)
-        path.append(pos)
-
-        if done:
-            return path, True
-
-    return path, False
 
 def get_agent_view(maze, pos):
     row, col = pos
@@ -489,8 +461,7 @@ btn_fwd.on_clicked(on_fwd)
 # ----------------------------------------------------------------
 
 def run_maze(idx):
-    # idx   = int(idx)
-    idx = 10
+    idx   = int(idx)
     maze  = test_mazes[idx]
     path, success = get_path(maze, Q)
 

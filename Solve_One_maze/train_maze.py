@@ -7,8 +7,7 @@ import pickle
 mazes = np.load('./data/maze_dataset/N16_p0100_train.npy')
 print(f"Loaded {mazes.shape[0]} mazes of size {mazes.shape[1]}x{mazes.shape[2]}")
 
-
-# np.random.seed(0)
+np.random.seed(42)
 
 
 # --- Parameters ---
@@ -104,8 +103,8 @@ def train(mazes, Q, n_episodes, alpha, gamma):
 
     for episode in range(n_episodes):
 
-        # maze = mazes[np.random.randint(len(mazes))]
-        maze = target_maze
+        maze = mazes[np.random.randint(len(mazes))]
+        
         pos = START
         state = get_state(maze, pos)
 
@@ -126,7 +125,7 @@ def train(mazes, Q, n_episodes, alpha, gamma):
             count = visit_count.get(new_pos, 0)
 
             if not done and count > 0:
-                reward -= -2
+                reward -= 2
 
             visit_count[new_pos] = count + 1
 
