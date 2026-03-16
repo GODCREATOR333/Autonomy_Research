@@ -1,5 +1,8 @@
 import numpy as np
 
+
+
+# Value Iteration
 def run_value_iteration(maze, gamma=0.9, theta=1e-4):
     N = maze.shape[0]
     V = np.zeros((N, N))

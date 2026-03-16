@@ -4,42 +4,25 @@ import matplotlib.patches as patches
 from matplotlib.widgets import Slider, Button
 import pickle
 import os
-import csv
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Debug paths
+# Add this to the top of BOTH train_maze.py and test_maze.py
+import os
 print(f"Working directory: {os.getcwd()}")
-print(f"Absolute path to Q-table: {os.path.abspath('q_table_N16_p0100pkl')}")
+print(f"Absolute path to pickle: {os.path.abspath('q_table_N16_p0100.pkl')}")
 
 # --- Load everything ---
-Q_PATH = os.path.join(BASE_DIR, 'q_table_N16_p0100.pkl')
-VI_PATH = os.path.join(BASE_DIR, 'vi_train_N16_p0100.pkl')
-DATA_PATH = os.path.join(BASE_DIR, '../data/maze_dataset/N16_p0100_test.npy')
+with open(os.path.join(BASE_DIR, 'q_table_N16_p0100.pkl'), 'rb') as f:
+    Q = pickle.load(f)
+print(f"Q-table loaded | {len(Q)} unique states")
 
-try:
-    with open(Q_PATH, 'rb') as f:
-        Q = pickle.load(f)
-    print(f"✅ Q-table loaded | {len(Q)} unique states")
-except FileNotFoundError:
-    print(f"❌ Q-table not found at {Q_PATH}")
-    print("💡 Please train first using train_q_learning_fixed.py")
-    exit(1)
+test_mazes = np.load('./data/maze_dataset/N16_p0100_test.npy')
+print(f"Loaded {test_mazes.shape[0]} test mazes")
 
-try:
-    test_mazes = np.load(DATA_PATH)
-    print(f"✅ Loaded {test_mazes.shape[0]} test mazes")
-except FileNotFoundError:
-    print(f"❌ Test data not found at {DATA_PATH}")
-    exit(1)
-
-try:
-    with open(VI_PATH, 'rb') as f:
-        vi_results = pickle.load(f)
-    print(f"✅ VI results loaded for {len(vi_results)} mazes")
-except FileNotFoundError:
-    print(f"⚠️  VI results not found at {VI_PATH} (comparison panels will be blank)")
-    vi_results = None
+with open(os.path.join(BASE_DIR, 'vi_train_N16_p0100.pkl'), 'rb') as f:
+    vi_results = pickle.load(f)
+print(f"VI results loaded for {len(vi_results)} mazes")
 
 # --- Parameters ---
 GRID_SIZE = 16
@@ -49,17 +32,15 @@ GOAL      = (GRID_SIZE-1, GRID_SIZE-1)
 WINDOW_SIZE = 3
 HALF_W = WINDOW_SIZE // 2
 
-action_to_delta = {0: (-1,0), 1: (1,0), 2: (0,-1), 3: (0,1)}  # UP, DOWN, LEFT, RIGHT
-action_to_arrow = {0: (0,-1), 1: (0,1), 2: (-1,0), 3: (1,0)}  # For visualization
+
+action_to_delta = {0: (-1,0), 1: (1,0), 2: (0,-1), 3: (0,1)}
+action_to_arrow = {0: (0,-1), 1: (0,1), 2: (-1,0), 3: (1,0)}
 
 COLOR_AGENT   = '#E74C3C'
 COLOR_GOAL    = '#2ECC71'
 COLOR_START   = '#3498DB'
 COLOR_VISITED = '#F39C12'
 BG            = '#1A1A2E'
-
-# Global counter for unseen states
-unseen_state_counter = [0]
 
 # ----------------------------------------------------------------
 # Helpers
@@ -77,7 +58,7 @@ def get_state(maze, pos):
             if 0 <= r < GRID_SIZE and 0 <= c < GRID_SIZE:
                 window.append(maze[r, c])
             else:
-                window.append(1)  # Out of bounds = blocked
+                window.append(1)
 
     dr_goal = int(np.sign(GOAL[0] - row))
     dc_goal = int(np.sign(GOAL[1] - col))
@@ -86,160 +67,63 @@ def get_state(maze, pos):
 
 
 def step(maze, pos, action):
-    """Step function synced with training (includes progress reward for consistency)"""
     row, col = pos
     dr, dc   = action_to_delta[action]
     nr, nc   = row+dr, col+dc
-    
-    # Wall or boundary collision
     if nr < 0 or nr >= GRID_SIZE or nc < 0 or nc >= GRID_SIZE:
         return pos, -10.0, False
     if maze[nr, nc] == 1:
         return pos, -10.0, False
-    
-    # Goal reached
     if (nr, nc) == GOAL:
         return (nr, nc), +100.0, True
-    
-    # Progress-based reward (same as training)
-    old_dist = abs(row - GOAL[0]) + abs(col - GOAL[1])
-    new_dist = abs(nr - GOAL[0]) + abs(nc - GOAL[1])
-    progress_reward = 0.5 * (old_dist - new_dist)
-    step_penalty = -0.2
-    
-    return (nr, nc), step_penalty + progress_reward, False
-
-
-def get_action_safe(Q, state, pos=None):
-    """Get action with fallback for unseen states"""
-    if state in Q:
-        return np.argmax(Q[state])
-    else:
-        unseen_state_counter[0] += 1
-        # Fallback: move toward goal direction
-        if pos is not None:
-            dr_goal = np.sign(GOAL[0] - pos[0])
-            dc_goal = np.sign(GOAL[1] - pos[1])
-            # Prefer movement that aligns with goal direction
-            if dr_goal != 0:
-                return 1 if dr_goal > 0 else 0  # DOWN or UP
-            if dc_goal != 0:
-                return 3 if dc_goal > 0 else 2  # RIGHT or LEFT
-        return np.random.randint(N_ACTIONS)  # Last resort
-
+    return (nr, nc), -0.1, False
 
 def get_path(maze, Q):
-    """Execute greedy policy with fallback for unseen states"""
     pos, path = START, [START]
-    for _ in range(GRID_SIZE * GRID_SIZE * 4):  # Max steps
-        state = get_state(maze, pos)
-        action = get_action_safe(Q, state, pos)
+    for _ in range(GRID_SIZE * GRID_SIZE * 2):
+        q_vals = Q.get(get_state(maze, pos), np.zeros(N_ACTIONS))
+        action = np.argmax(q_vals)
         pos, _, done = step(maze, pos, action)
         path.append(pos)
         if done:
             return path, True
     return path, False
 
-
 def get_ql_value_policy(maze, Q):
-    """Extract value function and policy from Q-table for visualization"""
+
     V = np.full((GRID_SIZE, GRID_SIZE), np.nan)
     policy = np.full((GRID_SIZE, GRID_SIZE), -1)
 
     for r in range(GRID_SIZE):
         for c in range(GRID_SIZE):
+
             if maze[r, c] == 1:
                 continue
+
             pos = (r, c)
             state = get_state(maze, pos)
+
             if state in Q:
                 q_vals = Q[state]
                 V[r, c] = np.max(q_vals)
                 policy[r, c] = np.argmax(q_vals)
+
     return V, policy
 
-
 def get_agent_view(maze, pos):
-    """Extract 3x3 local view for visualization"""
     row, col = pos
     view = np.ones((WINDOW_SIZE, WINDOW_SIZE))
+
     for i, dr in enumerate(range(-HALF_W, HALF_W + 1)):
         for j, dc in enumerate(range(-HALF_W, HALF_W + 1)):
             r, c = row + dr, col + dc
             if 0 <= r < GRID_SIZE and 0 <= c < GRID_SIZE:
                 view[i, j] = maze[r, c]
+
     return view
-
-
-def evaluate_detailed(Q, mazes, n_eval=None):
-    """Return detailed metrics beyond just success rate"""
-    if n_eval is None:
-        n_eval = len(mazes)
-    
-    results = []
-    local_unseen = [0]  # Local counter for this evaluation
-    
-    for i in range(n_eval):
-        maze = mazes[i]
-        pos = START
-        path = [pos]
-        visited_states = set()
-        
-        for step_num in range(GRID_SIZE * GRID_SIZE * 4):
-            state = get_state(maze, pos)
-            if state not in Q:
-                local_unseen[0] += 1
-            visited_states.add(state)
-            
-            action = get_action_safe(Q, state, pos)
-            pos, _, done = step(maze, pos, action)
-            path.append(pos)
-            
-            if done:
-                break
-        
-        # Compute metrics
-        final_dist = abs(pos[0]-GOAL[0]) + abs(pos[1]-GOAL[1])
-        results.append({
-            'maze_idx': i,
-            'success': done,
-            'steps': len(path)-1,
-            'final_dist': final_dist,
-            'unique_states': len(visited_states)
-        })
-    
-    # Aggregate stats
-    successes = sum(1 for r in results if r['success'])
-    successful_steps = [r['steps'] for r in results if r['success']]
-    failed_dists = [r['final_dist'] for r in results if not r['success']]
-    
-    print(f"\n📊 Detailed Evaluation ({n_eval} mazes):")
-    print(f"   Success Rate: {successes}/{n_eval} = {100*successes/n_eval:.1f}%")
-    if successful_steps:
-        print(f"   Avg Steps (success): {np.mean(successful_steps):.1f} ± {np.std(successful_steps):.1f}")
-    if failed_dists:
-        print(f"   Avg Final Distance (fail): {np.mean(failed_dists):.1f}")
-    print(f"   Unseen States Encountered: {local_unseen[0]}")
-    
-    # After evaluate_detailed(), add:
-    failed_mazes = [r['maze_idx'] for r in results if not r['success']]
-    if failed_mazes:
-        print(f"\n🔍 First 5 failed maze indices: {failed_mazes[:5]}")
-        print("💡 Try visualizing these specific mazes with the slider to debug")
-        
-    return results
-
-
-def save_results_to_csv(results, filename='eval_results.csv'):
-    """Save evaluation results to CSV for analysis"""
-    if not results:
-        return
-    with open(filename, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=results[0].keys())
-        writer.writeheader()
-        writer.writerows(results)
-    print(f"💾 Results saved to {filename}")
-
+# --- Success rate ---
+successes = sum(1 for maze in test_mazes if get_path(maze, Q)[1])
+print(f"Success rate: {successes}/{len(test_mazes)} = {successes/len(test_mazes)*100:.1f}%")
 
 # ----------------------------------------------------------------
 # Maze image cache — build RGB array once per maze
@@ -266,7 +150,7 @@ def get_maze_base_img(maze):
 # Draw functions
 # ----------------------------------------------------------------
 
-# Persistent handles for agent panel
+# persistent handles for agent panel
 _agent_im_handle = [None]
 _agent_circle    = [None]
 _agent_ax_ready  = [False]
@@ -275,18 +159,24 @@ def reset_agent_panel():
     _agent_ax_ready[0] = False
 
 def draw_agent_panel(ax, maze, path, step_idx):
+
     pos = path[min(step_idx, len(path)-1)]
 
     if not _agent_ax_ready[0]:
+
         ax.clear()
         ax.set_facecolor(BG)
         ax.axis('off')
+
         ax.set_xlim(-0.5, GRID_SIZE-0.5)
         ax.set_ylim(GRID_SIZE-0.5, -0.5)
+
+        # force square cells
         ax.set_aspect('equal', adjustable='box')
 
-        # Base maze image
+        # ---- base maze image (FAST) ----
         img = get_maze_base_img(maze)
+
         _agent_im_handle[0] = ax.imshow(
             img,
             extent=[-0.5, GRID_SIZE-0.5, GRID_SIZE-0.5, -0.5],
@@ -295,44 +185,43 @@ def draw_agent_panel(ax, maze, path, step_idx):
             aspect='equal'
         )
 
-        # Draw grid once
+        # ---- draw grid ONCE ----
         for i in range(GRID_SIZE + 1):
             ax.axhline(i - 0.5, color='#BDC3C7', linewidth=0.35, zorder=1)
             ax.axvline(i - 0.5, color='#BDC3C7', linewidth=0.35, zorder=1)
 
-        # Start + goal labels
+        # start + goal labels
         ax.text(START[1], START[0], 'S',
                 ha='center', va='center',
                 color='white', fontsize=9, fontweight='bold', zorder=4)
+
         ax.text(GOAL[1], GOAL[0], 'G',
                 ha='center', va='center',
                 color='white', fontsize=9, fontweight='bold', zorder=4)
 
         ax.set_title('Agent Navigation', color='white', fontsize=11, pad=6)
 
-        # Agent marker
+        # agent marker
         circle = plt.Circle((pos[1], pos[0]), 0.35, color=COLOR_AGENT, zorder=5)
         ax.add_patch(circle)
+
         _agent_circle[0]   = circle
         _agent_ax_ready[0] = True
 
+
     else:
-        # Update image with trail
-        img = get_maze_base_img(maze)
+        # ---- update image with trail ----
+        img = get_maze_base_img(maze)   
+
         for i in range(min(step_idx, len(path))):
             r, c = path[i]
             if (r,c) != START and (r,c) != GOAL:
                 img[r, c] = [0.95, 0.61, 0.07]   # visited
+
         _agent_im_handle[0].set_data(img)
+
+        # move agent
         _agent_circle[0].center = (pos[1], pos[0])
-    
-    # Draw red X at final position if failed and at end of path
-    if not state['success'] and step_idx == len(path)-1 and len(path) > 1:
-        final_pos = path[-1]
-        ax.plot([final_pos[1]-0.3, final_pos[1]+0.3], [final_pos[0]-0.3, final_pos[0]+0.3], 
-                color='#E74C3C', linewidth=2.5, zorder=6)
-        ax.plot([final_pos[1]-0.3, final_pos[1]+0.3], [final_pos[0]+0.3, final_pos[0]-0.3], 
-                color='#E74C3C', linewidth=2.5, zorder=6)
 
 
 def draw_view_panel(ax, maze, path, step_idx):
@@ -474,6 +363,7 @@ im_ql = [None]
 # Controls
 # ----------------------------------------------------------------
 
+
 ax_slider = fig.add_axes([0.32, 0.03, 0.55, 0.02])
 ax_slider.set_facecolor('#2C3E50')
 slider = Slider(ax_slider, 'Maze', 0, len(test_mazes)-1,
@@ -484,16 +374,14 @@ slider.valtext.set_color('white')
 ax_btn_back = fig.add_axes([0.125, 0.085, 0.03, 0.03])
 ax_btn_play = fig.add_axes([0.165, 0.085, 0.03, 0.03])
 ax_btn_fwd  = fig.add_axes([0.205, 0.085, 0.03, 0.03])
-ax_btn_all  = fig.add_axes([0.245, 0.085, 0.04, 0.03])
 
 btn_back = Button(ax_btn_back, '◀◀', color='#2C3E50', hovercolor='#3D566E')
 btn_play = Button(ax_btn_play, '▶',  color='#2C3E50', hovercolor='#3D566E')
 btn_fwd  = Button(ax_btn_fwd,  '▶▶', color='#2C3E50', hovercolor='#3D566E')
-btn_all  = Button(ax_btn_all,  'ALL', color='#2C3E50', hovercolor='#3D566E')
 
-for btn in [btn_back, btn_play, btn_fwd, btn_all]:
+for btn in [btn_back, btn_play, btn_fwd]:
     btn.label.set_color('white')
-    btn.label.set_fontsize(9)
+    btn.label.set_fontsize(10)
 
 # ----------------------------------------------------------------
 # Frame state
@@ -564,20 +452,9 @@ def on_fwd(event):
     last_rendered[0] = -1
     render_frame(state['frame'])
 
-def on_run_all(event):
-    """Run evaluation on all test mazes and print detailed stats"""
-    print("\n🔄 Running evaluation on all test mazes...")
-    global unseen_state_counter
-    unseen_state_counter[0] = 0  # Reset counter
-    results = evaluate_detailed(Q, test_mazes, n_eval=len(test_mazes))
-    save_results_to_csv(results)
-    print("✅ Evaluation complete")
-    fig.canvas.draw_idle()
-
 btn_play.on_clicked(on_play)
 btn_back.on_clicked(on_back)
 btn_fwd.on_clicked(on_fwd)
-btn_all.on_clicked(on_run_all)
 
 # ----------------------------------------------------------------
 # Main run_maze
@@ -588,12 +465,7 @@ def run_maze(idx):
     maze  = test_mazes[idx]
     path, success = get_path(maze, Q)
 
-    # Get VI results if available
-    if vi_results is not None and idx < len(vi_results):
-        V_vi,  pol_vi = vi_results[idx]['V'], vi_results[idx]['policy']
-    else:
-        V_vi,  pol_vi = np.full((GRID_SIZE, GRID_SIZE), np.nan), np.full((GRID_SIZE, GRID_SIZE), -1)
-    
+    V_vi,  pol_vi = vi_results[idx]['V'], vi_results[idx]['policy']
     V_ql,  pol_ql = get_ql_value_policy(maze, Q)
 
     state['frame']    = 0
@@ -618,16 +490,5 @@ def run_maze(idx):
     render_frame(0)
 
 slider.on_changed(run_maze)
-
-# Initial evaluation on first maze
-print("\n🔍 Running initial evaluation on first test maze...")
-unseen_state_counter[0] = 0
 run_maze(0)
-
 plt.show()
-
-# Final summary after window closes
-print(f"\n📋 Session Summary:")
-print(f"   Total unseen states encountered: {unseen_state_counter[0]}")
-if unseen_state_counter[0] > 50:
-    print(f"   ⚠️  High unseen count — consider more training or richer state representation")
