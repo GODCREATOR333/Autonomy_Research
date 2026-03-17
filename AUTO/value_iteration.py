@@ -19,7 +19,7 @@ action_names = list(actions.keys())
 
 
 
-# 3. Initialize Value Table and Policy Table
+# 3. Initialize Value Table and Policy Table    
 V = np.zeros((grid_rows, grid_cols))
 policy = np.full((grid_rows, grid_cols), 'none', dtype=object)
 
