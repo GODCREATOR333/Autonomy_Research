@@ -1,142 +1,144 @@
 import numpy as np
-import random
 import matplotlib.pyplot as plt
-import cma
 
 # =============================
 # PARAMETERS
 # =============================
-L = 100
-v = 1.0
-D = 0.5
-dt = 0.1
-runs = 50
+L = 100       # goal position
+v = 1.0       # drift speed in G
+D = 0.5       # diffusion coefficient in E
+N = 200       # number of spatial points
+dx = L / N
 
-rho_vals = np.linspace(0, 1, 12)
-trap_length = 5
-num_env = 1   # environments per rho
-
-# =============================
-# TRAP GENERATION
-# =============================
-def generate_traps(rho):
-    traps = []
-    total = int(rho * L)
-    covered = 0
-
-    while covered < total:
-        start = random.uniform(0, L - trap_length)
-        traps.append((start, start + trap_length))
-        covered += trap_length
-
-    return traps
-
-def in_trap(x, traps):
-    for a, b in traps:
-        if a <= x <= b:
-            return True
-    return False
+# Grid of α and β
+alpha_vals = np.logspace(-2, 1.7, 30)
+beta_vals  = np.logspace(-2, 1.7, 30)
 
 # =============================
-# MFPT SIMULATION
+# BACKWARD EQUATION SOLVER (WITH TRAPS)
 # =============================
-def simulate_mfpt(alpha, beta, traps):
-    times = []
-
-    for _ in range(runs):
-        x = 0
-        state = "G"
-        t = 0
-
-        while x < L and t < 500:
-            if state == "G":
-                if not in_trap(x, traps):
-                    x += v * dt
-                if random.random() < alpha * dt:
-                    state = "E"
-
+def solve_mfpt_with_traps(alpha, beta, traps):
+    T_size = 2*(N+1)
+    A = np.zeros((T_size, T_size))
+    b = np.zeros(T_size)
+    
+    for i in range(N+1):
+        g = i
+        e = i + N + 1
+        
+        # 1. Absorbing Boundary (Goal)
+        if i == N:
+            A[g, g] = 1
+            A[e, e] = 1
+            b[g] = 0
+            b[e] = 0
+            
+        # 2. Reflecting Boundary (Start)
+        elif i == 0:
+            if traps[i]:
+                A[g, g] = -alpha
+                A[g, e] = alpha
             else:
-                x += random.gauss(0, np.sqrt(2 * D * dt))
-                if random.random() < beta * dt:
-                    state = "G"
-
-            if x < 0:
-                x = 0
-
-            t += dt
-
-        times.append(t)
-
-    return np.mean(times)
-
-# =============================
-# CMA-ES OPTIMIZER
-# =============================
-def optimize_cma(traps):
-
-    def objective(log_params):
-        log_alpha, log_beta = log_params
-        alpha = 10**log_alpha
-        beta  = 10**log_beta
-
-        return simulate_mfpt(alpha, beta, traps)
-
-    # initial guess in log space
-    x0 = [0, 0]   # α=1, β=1
-    sigma = 1.0
-
-    es = cma.CMAEvolutionStrategy(x0, sigma, {
-        'bounds': [[-2, -2], [2, 2]],  # α,β ∈ [0.01, 100]
-        'verb_disp': 0
-    })
-
-    while not es.stop():
-        solutions = es.ask()
-        values = [objective(x) for x in solutions]
-        es.tell(solutions, values)
-
-    best = es.result.xbest
-    alpha_opt = 10**best[0]
-    beta_opt  = 10**best[1]
-
-    return alpha_opt, beta_opt
+                A[g, g] = -v/dx - alpha
+                A[g, g+1] = v/dx
+                A[g, e] = alpha
+            b[g] = -1
+            
+            A[e, e] = 1
+            A[e, e+1] = -1
+            b[e] = 0
+            
+        # 3. Interior Points
+        else:
+            # --- G MODE (Drift) ---
+            if traps[i]:
+                # TRAP: Velocity is 0. Agent is stuck until it switches to E.
+                A[g, g] = -alpha
+                A[g, e] = alpha
+                b[g] = -1
+            else:
+                # CLEAR: Normal drift.
+                A[g, g] = -v/dx - alpha
+                A[g, g+1] = v/dx
+                A[g, e] = alpha
+                b[g] = -1
+            
+            # --- E MODE (Diffusion) ---
+            # E mode can always diffuse, even in traps.
+            A[e, e-1] = D/dx**2
+            A[e, e]   = -2*D/dx**2 - beta
+            A[e, e+1] = D/dx**2
+            A[e, g]   = beta
+            b[e] = -1
+            
+    T = np.linalg.solve(A, b)
+    return T[:N+1][0]  # Return MFPT starting at x=0 in state G
 
 # =============================
-# MAIN LOOP
+# SWEEP OVER TRAP DENSITIES (The Phase Transition Hunt)
 # =============================
-alpha_star = []
-beta_star = []
+# Let's test densities from 0% to 30%
+densities = [0.0, 0.05, 0.10, 0.15, 0.20, 0.30]
+num_mazes = 10 # Average over 10 random mazes per density to smooth noise
 
-for rho in rho_vals:
-    print(f"\nρ = {rho:.2f}")
+optimal_alphas = []
+optimal_betas = []
+min_mfpts = []
 
-    alpha_list = []
-    beta_list = []
-
-    for _ in range(num_env):
-        traps = generate_traps(rho)
-        a_opt, b_opt = optimize_cma(traps)
-
-        alpha_list.append(a_opt)
-        beta_list.append(b_opt)
-
-    alpha_star.append(np.mean(alpha_list))
-    beta_star.append(np.mean(beta_list))
-
-    print(f"α* ≈ {alpha_star[-1]:.3f}, β* ≈ {beta_star[-1]:.3f}")
+for p in densities:
+    print(f"\nEvaluating Trap Density: {p*100}%")
+    
+    # Pre-generate mazes for this density
+    mazes = []
+    for _ in range(num_mazes):
+        maze = np.random.rand(N+1) < p
+        maze[0] = False # Start is never a trap
+        maze[N] = False # Goal is never a trap
+        mazes.append(maze)
+        
+    MFPT_avg = np.zeros((len(alpha_vals), len(beta_vals)))
+    
+    for i, alpha in enumerate(alpha_vals):
+        for j, beta in enumerate(beta_vals):
+            
+            # Average the MFPT across the random mazes
+            mfpt_sum = 0
+            for maze in mazes:
+                mfpt_sum += solve_mfpt_with_traps(alpha, beta, maze)
+            MFPT_avg[i, j] = mfpt_sum / num_mazes
+            
+    # Find Optimal for this density
+    min_idx = np.unravel_index(np.argmin(MFPT_avg), MFPT_avg.shape)
+    alpha_opt = alpha_vals[min_idx[0]]
+    beta_opt  = beta_vals[min_idx[1]]
+    mfpt_min  = MFPT_avg[min_idx]
+    
+    optimal_alphas.append(alpha_opt)
+    optimal_betas.append(beta_opt)
+    min_mfpts.append(mfpt_min)
+    
+    print(f"Optimal Strategy -> α(G→E): {alpha_opt:.3f}, β(E→G): {beta_opt:.3f} | MFPT: {mfpt_min:.1f}")
 
 # =============================
-# PLOT
+# PLOT THE PHASE TRANSITION
 # =============================
-plt.figure(figsize=(8,6))
+plt.figure(figsize=(10, 5))
 
-plt.plot(rho_vals, alpha_star, 'o-', label='α*')
-plt.plot(rho_vals, beta_star, 's-', label='β*')
-
+plt.subplot(1, 2, 1)
+plt.plot(densities, optimal_alphas, '-o', color='blue', label='α (G→E)')
+plt.plot(densities, optimal_betas, '-o', color='red', label='β (E→G)')
 plt.yscale('log')
-plt.xlabel('Trap density ρ')
-plt.ylabel('Optimal switching rate')
-plt.title('CMA-ES Optimized Switching Strategy')
-plt.grid(True, which='both')
+plt.xlabel('Trap Density (p)')
+plt.ylabel('Optimal Switching Rate')
+plt.title('Phase Transition in Strategy')
 plt.legend()
+
+plt.subplot(1, 2, 2)
+plt.plot(densities, min_mfpts, '-ok', label='Minimum MFPT')
+plt.xlabel('Trap Density (p)')
+plt.ylabel('Time to Goal')
+plt.title('Cost Function vs Density')
+plt.legend()
+
+plt.tight_layout()
 plt.show()
