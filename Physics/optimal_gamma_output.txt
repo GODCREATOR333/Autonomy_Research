@@ -219,25 +219,6 @@
 
     ##########################################################
 
-
-    (.mech-intr) haripreetham@Interface-labs-Mac-mini Autonomy_Research % python3 Physics/hybrid_agent.py  
-════════════════════════════════════════════════════════════════════════
-  Hybrid GEO↔EGO — Density Sweep with Adaptive T_max
-  Densities selected : ['10%', '20%', '30%', '35%', '37%', '40%']
-  β (failure amplif) : 2
-  k × BFS-95th pct   : T_max
-════════════════════════════════════════════════════════════════════════
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  DENSITY  10%  (P0100)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Train: 4500 mazes  → subsampled 500
-  BFS paths  — mean: 30.0  median: 30.0  p95: 30.0  → T_max = 5×30 = 150  (0.7s)
-  Sweeping 21 γ values (10 trials × 500 mazes = 105,000 sims) …
-      γ       SR      MFPT       EST     C_wgt
-  -----  -------  --------  --------  --------
-^Z
-zsh: suspended  python3 Physics/hybrid_agent.py
 (.mech-intr) haripreetham@Interface-labs-Mac-mini Autonomy_Research % python3 Physics/hybrid_agent.py
 ════════════════════════════════════════════════════════════════════════
   Hybrid GEO↔EGO — Density Sweep with Adaptive T_max
