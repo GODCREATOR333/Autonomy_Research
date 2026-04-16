@@ -161,7 +161,7 @@ plt.show()
 # =========================================================
 current_maze_idx = 0
 active_q_table = trained_q_tables[3] # Index 3 is the 40% density table
-active_maze_set = jnp.array(np.load("data_jax/N16_P0400_test_solvable_random.npy"))
+active_maze_set = jnp.array(np.load("data_jax/N16_P0300_test_solvable_random.npy"))
 
 fig_v, ax_v = plt.subplots(figsize=(8, 8))
 

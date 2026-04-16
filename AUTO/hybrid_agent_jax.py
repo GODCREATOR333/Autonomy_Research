@@ -17,6 +17,7 @@ P_TURN = (1.0 - P_STRAIGHT) / 2.0
 # State: 256 (window) * 9 (goal_dir) * 5 (last_action) = 11,520
 Q_TABLE_SIZE = 11520 
 TRAIN_EPISODES = 80000 
+MAX_STEPS = 90
 ALPHA, GAMMA = 0.1, 0.98
 EPS_START, EPS_MIN, EPS_DECAY = 1.0, 0.05, 0.99995
 
@@ -63,7 +64,7 @@ def env_step(maze, r, c, last_a, meta_a, key):
     invalid = (nr < 0) | (nr >= 16) | (nc < 0) | (nc >= 16) | (maze[jnp.clip(nr,0,15), jnp.clip(nc,0,15)] == 1)
     fr, fc = jnp.where(invalid, r, nr), jnp.where(invalid, c, nc)
     is_goal = (fr == 15) & (fc == 15)
-    reward = jnp.where(is_goal, 100.0, jnp.where(invalid, -5.0, -1.0))
+    reward = jnp.where(is_goal, 100.0, jnp.where(invalid, -500.0, -1.0))
     return fr, fc, a, reward, is_goal, key
 
 # =========================================================
@@ -74,6 +75,7 @@ def env_step(maze, r, c, last_a, meta_a, key):
 def train_step(q, mazes, eps, k):
     k, sk1, sk2 = jrandom.split(k, 3)
     maze = mazes[jrandom.randint(sk1, (), 0, len(mazes))]
+
     def body(s):
         q, r, c, la, st, done, k = s
         state = get_meta_state(maze, r, c, la)
@@ -83,7 +85,7 @@ def train_step(q, mazes, eps, k):
         target = rew + GAMMA * jnp.where(d, 0.0, jnp.max(q[get_meta_state(maze, nr, nc, na)]))
         q = q.at[state, meta_a].set(q[state, meta_a] + ALPHA * (target - q[state, meta_a]))
         return (q, nr, nc, na, st + 1, d, k)
-    return jax.lax.while_loop(lambda s: (~s[5]) & (s[4] < 300), body, (q, 0, 0, 4, 0, False, k))[0], k
+    return jax.lax.while_loop(lambda s: (~s[5]) & (s[4] < MAX_STEPS), body, (q, jnp.int32(0), jnp.int32(0), jnp.int32(4), jnp.int32(0), jnp.bool_(False), k))[0], k
 
 @jax.jit
 def evaluate_batch(mazes, q, keys):
@@ -93,8 +95,8 @@ def evaluate_batch(mazes, q, keys):
             state = get_meta_state(maze, r, c, la)
             meta_a = jnp.argmax(q[state])
             nr, nc, na, _, d, k = env_step(maze, r, c, la, meta_a, k)
-            return (nr, nc, na, st + 1, ego_c + meta_a, d, k)
-        res = jax.lax.while_loop(lambda s: (~s[5]) & (s[4] < 400), body, (0, 0, 4, 0, 0, False, k))
+            return (nr, nc, na, st + 1, ego_c + meta_a, d, k)  # ← add this line
+        res = jax.lax.while_loop(lambda s: (~s[5]) & (s[3] < MAX_STEPS), body, (jnp.int32(0), jnp.int32(0), jnp.int32(4), jnp.int32(0), jnp.int32(0), jnp.bool_(False), k))
         return res[5], res[3], res[4] 
     return jax.vmap(run_one)(mazes, keys)
 
@@ -102,10 +104,10 @@ def evaluate_batch(mazes, q, keys):
 # 4. EXECUTION: TRAINING & DATA LOADING
 # =========================================================
 print("Loading datasets...")
-train_data = jnp.array(np.load("data_jax/N16_P0400_train_solvable.npy"))
-test_rand  = jnp.array(np.load("data_jax/N16_P0400_test_solvable_random.npy"))
-test_shapes = jnp.array(np.load("data_jax/N16_P0400_test_solvable_shapes.npy"))
-test_symm   = jnp.array(np.load("data_jax/N16_P0400_test_solvable_symmetric.npy"))
+train_data = jnp.array(np.load("data_jax/N16_P0100_train_solvable.npy"))
+test_rand  = jnp.array(np.load("data_jax/N16_P0100_test_solvable_random.npy"))
+test_shapes = jnp.array(np.load("data_jax/N16_P0100_test_solvable_shapes.npy"))
+test_symm   = jnp.array(np.load("data_jax/N16_P0100_test_solvable_symmetric.npy"))
 
 # q_table = jnp.zeros((Q_TABLE_SIZE, 2))
 q_table = jnp.full((Q_TABLE_SIZE, 2), -50.0)
@@ -137,7 +139,7 @@ def update_plot():
         r, c, la, st = 0, 0, 4, 0
         path, modes, actions = [(0,0)], [], []
         k = rng_key
-        for _ in range(400):
+        for _ in range(MAX_STEPS):
             state = get_meta_state(maze, r, c, la)
             meta_a = int(jnp.argmax(q_table[state]))
             nr, nc, na, _, d, k = env_step(maze, r, c, la, meta_a, k)
@@ -195,7 +197,9 @@ print("\nInteractive Viewer Ready. Use Left/Right arrows to browse mazes.")
 for name, m_set in [("Random", test_rand), ("Shapes", test_shapes), ("Symmetric", test_symm)]:
     keys = jrandom.split(rng_key, len(m_set))
     succ, steps, ego = evaluate_batch(m_set, q_table, keys)
-    print(f"[{name:10}] Success: {jnp.mean(succ)*100:5.2f}% | MFPT: {jnp.mean(steps[succ]):5.2f}")
+    succ_np, steps_np = np.array(succ), np.array(steps)
+    mfpt = steps_np[succ_np].mean() if succ_np.any() else float('nan')
+    print(f"[{name:10}] Success: {jnp.mean(succ)*100:5.2f}% | MFPT: {mfpt:.2f}")
 
 update_plot()
 plt.show()
