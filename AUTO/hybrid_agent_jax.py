@@ -17,7 +17,7 @@ P_TURN = (1.0 - P_STRAIGHT) / 2.0
 # State: 256 (window) * 9 (goal_dir) * 5 (last_action) = 11,520
 Q_TABLE_SIZE = 11520 
 TRAIN_EPISODES = 80000 
-MAX_STEPS = 90
+MAX_STEPS = 30
 ALPHA, GAMMA = 0.1, 0.98
 EPS_START, EPS_MIN, EPS_DECAY = 1.0, 0.05, 0.99995
 
